@@ -1,12 +1,26 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import Hero from "@/components/Hero";
+import SOSButton from "@/components/SOSButton";
+import Features from "@/components/Features";
+import EmergencyContacts from "@/components/EmergencyContacts";
+import SafetyMap from "@/components/SafetyMap";
 
 const Index = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <Hero />
+      <SOSButton />
+      <Features />
+      <EmergencyContacts />
+      <SafetyMap />
+      
+      {/* Footer */}
+      <footer className="py-8 border-t border-border">
+        <div className="container mx-auto px-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Built with 💝 in the spirit of Raksha Bandhan — protecting what matters most
+          </p>
+        </div>
+      </footer>
     </div>
   );
 };

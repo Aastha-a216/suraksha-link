@@ -1,3 +1,4 @@
+import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import SOSButton from "@/components/SOSButton";
 import Features from "@/components/Features";
@@ -7,6 +8,7 @@ import SafetyMap from "@/components/SafetyMap";
 const Index = () => {
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <Hero />
       <SOSButton />
       <Features />

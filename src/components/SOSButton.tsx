@@ -108,14 +108,41 @@ const SOSButton = () => {
   };
 
   const saveRecording = async (blob: Blob) => {
-    // Save locally
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sos_recording_${Date.now()}.webm`;
-    a.click();
+    if (!user) return;
+
+    const fileName = `${user.id}/sos_recording_${Date.now()}.webm`;
     
-    toast.info("Recording saved locally");
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('sos-recordings')
+      .upload(fileName, blob, {
+        contentType: 'video/webm',
+        upsert: false
+      });
+
+    if (uploadError) {
+      toast.error("Failed to upload recording to cloud");
+      console.error("Upload error:", uploadError);
+      
+      // Fallback: save locally
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sos_recording_${Date.now()}.webm`;
+      a.click();
+      toast.info("Recording saved locally as fallback");
+    } else {
+      // Update the most recent SOS alert with recording URL
+      await supabase
+        .from('sos_alerts')
+        .update({ recording_url: fileName })
+        .eq('user_id', user.id)
+        .eq('status', 'deactivated')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      toast.success("Recording saved to cloud storage");
+    }
   };
 
   const shareLocation = async () => {

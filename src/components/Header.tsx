@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Shield, Settings, LogIn } from 'lucide-react';
+import { Shield, Settings, LogIn, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Header = () => {
@@ -28,6 +28,15 @@ const Header = () => {
               <span className="text-sm text-muted-foreground hidden sm:inline">
                 {user.email}
               </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/recordings')}
+                className="gap-2"
+              >
+                <Video className="w-4 h-4" />
+                <span className="hidden sm:inline">Recordings</span>
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"

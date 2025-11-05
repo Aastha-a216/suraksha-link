@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { AlertCircle, Phone, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -10,9 +10,40 @@ const SOSButton = () => {
   const [isActive, setIsActive] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [hasPermission, setHasPermission] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // Request camera and microphone permissions on mount
+  useEffect(() => {
+    const requestPermissions = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        setHasPermission(true);
+        // Store the stream for later use
+        streamRef.current = stream;
+        toast.success("Camera and microphone ready for emergency recording");
+      } catch (error) {
+        toast.warning("Please allow camera and microphone access for emergency recording", {
+          description: "Recording will be disabled without permissions"
+        });
+      }
+    };
+
+    requestPermissions();
+
+    return () => {
+      // Clean up stream on unmount
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const activateSOS = () => {
     // Start 3-second countdown
@@ -35,13 +66,13 @@ const SOSButton = () => {
   };
 
   const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+    if (!hasPermission || !streamRef.current) {
+      toast.error("Camera and microphone access required for recording");
+      return;
+    }
 
-      const mediaRecorder = new MediaRecorder(stream, {
+    try {
+      const mediaRecorder = new MediaRecorder(streamRef.current, {
         mimeType: 'video/webm',
       });
 
@@ -57,16 +88,15 @@ const SOSButton = () => {
       mediaRecorder.onstop = async () => {
         const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
         await saveRecording(blob);
-        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
-      toast.success("📹 Recording started", {
+      toast.success("📹 Recording started automatically", {
         description: "Audio and video recording in progress",
       });
     } catch (error) {
-      toast.error("Failed to start recording. Please allow camera and microphone access.");
+      toast.error("Failed to start recording");
     }
   };
 
@@ -186,6 +216,19 @@ const SOSButton = () => {
         .update({ status: 'deactivated', deactivated_at: new Date().toISOString() })
         .eq('user_id', user.id)
         .eq('status', 'active');
+    }
+
+    // Restart the stream for next time
+    if (streamRef.current) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        streamRef.current = stream;
+      } catch (error) {
+        setHasPermission(false);
+      }
     }
 
     toast.info("SOS Deactivated", {

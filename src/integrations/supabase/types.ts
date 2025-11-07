@@ -65,6 +65,36 @@ export type Database = {
         }
         Relationships: []
       }
+      safety_checkins: {
+        Row: {
+          check_in_interval: number
+          created_at: string
+          id: string
+          last_update_at: string | null
+          marked_safe_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          check_in_interval?: number
+          created_at?: string
+          id?: string
+          last_update_at?: string | null
+          marked_safe_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          check_in_interval?: number
+          created_at?: string
+          id?: string
+          last_update_at?: string | null
+          marked_safe_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       sos_alerts: {
         Row: {
           created_at: string

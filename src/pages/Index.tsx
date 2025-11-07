@@ -1,6 +1,7 @@
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import SOSButton from "@/components/SOSButton";
+import SafetyCheckin from "@/components/SafetyCheckin";
 import Features from "@/components/Features";
 import EmergencyContacts from "@/components/EmergencyContacts";
 import SafetyMap from "@/components/SafetyMap";
@@ -11,6 +12,7 @@ const Index = () => {
       <Header />
       <Hero />
       <SOSButton />
+      <SafetyCheckin />
       <Features />
       <EmergencyContacts />
       <SafetyMap />

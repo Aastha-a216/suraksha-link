@@ -154,8 +154,6 @@ const SOSButton = () => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        const locationUrl = `https://maps.google.com/?q=${latitude},${longitude}`;
-        const timestamp = new Date().toLocaleString();
 
         // Save to database
         if (user) {
@@ -175,17 +173,27 @@ const SOSButton = () => {
             .eq('user_id', user.id);
 
           if (contacts && contacts.length > 0) {
-            const message = encodeURIComponent(
-              `🚨 SOS Alert! I need help.\nLocation: ${locationUrl}\nTime: ${timestamp}`
-            );
+            // Send SMS via edge function
+            try {
+              const { data, error } = await supabase.functions.invoke('send-sos-sms', {
+                body: {
+                  latitude,
+                  longitude,
+                  contacts: contacts.map(c => ({ phone: c.phone, name: c.name }))
+                }
+              });
 
-            contacts.forEach((contact) => {
-              // Open WhatsApp (opens in new tab, user needs to send)
-              const whatsappUrl = `https://wa.me/${contact.phone.replace(/\D/g, '')}?text=${message}`;
-              window.open(whatsappUrl, '_blank');
-            });
-
-            toast.success("Location shared with emergency contacts");
+              if (error) {
+                console.error('Error sending SOS SMS:', error);
+                toast.error("Failed to send location alerts");
+              } else {
+                const successCount = data.results.filter((r: any) => r.success).length;
+                toast.success(`Location sent to ${successCount} emergency contact${successCount !== 1 ? 's' : ''}`);
+              }
+            } catch (error) {
+              console.error('Error calling SMS function:', error);
+              toast.error("Failed to send location alerts");
+            }
           } else {
             toast.warning("No emergency contacts found. Add contacts first.");
           }

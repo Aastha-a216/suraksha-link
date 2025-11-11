@@ -17,7 +17,12 @@ const SafetyCheckIn = () => {
   const [isActive, setIsActive] = useState(false);
   const [checkInId, setCheckInId] = useState<string | null>(null);
   const [interval, setInterval] = useState("600"); // 10 minutes in seconds
+  const [deactivationLimit, setDeactivationLimit] = useState("600"); // 10 minutes
+  const [recordingEnabled, setRecordingEnabled] = useState(true);
+  const [escalationStatus, setEscalationStatus] = useState<string>("none");
+  const [missedCheckins, setMissedCheckins] = useState(0);
   const intervalRef = useRef<number | null>(null);
+  const escalationCheckRef = useRef<number | null>(null);
 
   // Check for active check-in on mount
   useEffect(() => {
@@ -37,7 +42,12 @@ const SafetyCheckIn = () => {
         setIsActive(true);
         setCheckInId(data.id);
         setInterval(data.check_in_interval.toString());
+        setDeactivationLimit(data.deactivation_limit?.toString() || "600");
+        setRecordingEnabled(data.recording_enabled ?? true);
+        setEscalationStatus(data.escalation_status || "none");
+        setMissedCheckins(data.missed_checkins || 0);
         startLocationUpdates(data.check_in_interval);
+        startEscalationCheck(data);
       }
     };
 
@@ -47,8 +57,66 @@ const SafetyCheckIn = () => {
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
       }
+      if (escalationCheckRef.current !== null) {
+        clearInterval(escalationCheckRef.current);
+      }
     };
   }, [user]);
+
+  const startEscalationCheck = (checkinData: any) => {
+    const checkInterval = 30000; // Check every 30 seconds
+    
+    const timer = window.setInterval(async () => {
+      const { data } = await supabase
+        .from('safety_checkins')
+        .select('*')
+        .eq('id', checkinData.id)
+        .single();
+
+      if (data) {
+        const lastUpdate = new Date(data.last_update_at);
+        const now = new Date();
+        const timeSinceUpdate = (now.getTime() - lastUpdate.getTime()) / 1000;
+        const deactivationTime = (now.getTime() - new Date(data.created_at).getTime()) / 1000;
+
+        // Check if missed check-in
+        if (timeSinceUpdate > data.check_in_interval * 2 && data.escalation_status === 'none') {
+          setEscalationStatus('escalated');
+          toast.error("Missed check-in detected! Escalating...");
+          
+          // Send critical alert to emergency contacts
+          const { data: contacts } = await supabase
+            .from('emergency_contacts')
+            .select('*')
+            .eq('user_id', user?.id);
+
+          if (contacts && contacts.length > 0 && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(async (position) => {
+              await supabase.functions.invoke('send-sos-sms', {
+                body: {
+                  latitude: position.coords.latitude,
+                  longitude: position.coords.longitude,
+                  contacts: contacts.map(c => ({ phone: c.phone, name: c.name })),
+                  isCritical: true
+                }
+              });
+            });
+          }
+        }
+
+        // Check if deactivation limit exceeded
+        if (deactivationTime > data.deactivation_limit && data.status === 'active') {
+          toast.error("Deactivation time exceeded! Alerting emergency contacts!");
+          setEscalationStatus('critical');
+        }
+
+        setMissedCheckins(data.missed_checkins || 0);
+        setEscalationStatus(data.escalation_status || 'none');
+      }
+    }, checkInterval);
+
+    escalationCheckRef.current = timer;
+  };
 
   const shareLocation = async () => {
     if (!navigator.geolocation) {
@@ -58,9 +126,18 @@ const SafetyCheckIn = () => {
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const { latitude, longitude } = position.coords;
+        const { latitude, longitude, accuracy } = position.coords;
 
         if (user) {
+          // Log location
+          await supabase.from('location_logs').insert({
+            user_id: user.id,
+            checkin_id: checkInId,
+            latitude,
+            longitude,
+            accuracy
+          });
+
           const { data: contacts } = await supabase
             .from('emergency_contacts')
             .select('*')
@@ -83,12 +160,19 @@ const SafetyCheckIn = () => {
                 toast.success(`Check-in sent to ${successCount} contact${successCount !== 1 ? 's' : ''}`);
               }
 
-              // Update last update time
+              // Update last update time and reset escalation
               if (checkInId) {
                 await supabase
                   .from('safety_checkins')
-                  .update({ last_update_at: new Date().toISOString() })
+                  .update({ 
+                    last_update_at: new Date().toISOString(),
+                    missed_checkins: 0,
+                    escalation_status: 'none'
+                  })
                   .eq('id', checkInId);
+                
+                setMissedCheckins(0);
+                setEscalationStatus('none');
               }
             } catch (error) {
               console.error('Error sending check-in:', error);
@@ -117,6 +201,7 @@ const SafetyCheckIn = () => {
     if (!user) return;
 
     const intervalSeconds = parseInt(interval);
+    const deactivationSeconds = parseInt(deactivationLimit);
 
     // Create check-in record
     const { data, error } = await supabase
@@ -124,7 +209,9 @@ const SafetyCheckIn = () => {
       .insert({
         user_id: user.id,
         status: 'active',
-        check_in_interval: intervalSeconds
+        check_in_interval: intervalSeconds,
+        deactivation_limit: deactivationSeconds,
+        recording_enabled: recordingEnabled
       })
       .select()
       .single();
@@ -136,7 +223,10 @@ const SafetyCheckIn = () => {
 
     setCheckInId(data.id);
     setIsActive(true);
+    setEscalationStatus('none');
+    setMissedCheckins(0);
     startLocationUpdates(intervalSeconds);
+    startEscalationCheck(data);
 
     toast.success("Safety check-in started", {
       description: `Location will be shared every ${intervalSeconds / 60} minutes`,
@@ -151,6 +241,11 @@ const SafetyCheckIn = () => {
       intervalRef.current = null;
     }
 
+    if (escalationCheckRef.current !== null) {
+      clearInterval(escalationCheckRef.current);
+      escalationCheckRef.current = null;
+    }
+
     await supabase
       .from('safety_checkins')
       .update({ 
@@ -161,9 +256,11 @@ const SafetyCheckIn = () => {
 
     setIsActive(false);
     setCheckInId(null);
+    setEscalationStatus('none');
+    setMissedCheckins(0);
 
     toast.success("Marked as safe!", {
-      description: "Check-in stopped",
+      description: "Check-in stopped and recordings saved",
     });
   };
 
@@ -199,6 +296,40 @@ const SafetyCheckIn = () => {
                   </Select>
                 </div>
 
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-foreground">
+                    Deactivation Time Limit
+                  </label>
+                  <Select value={deactivationLimit} onValueChange={setDeactivationLimit}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="300">5 minutes</SelectItem>
+                      <SelectItem value="600">10 minutes</SelectItem>
+                      <SelectItem value="900">15 minutes</SelectItem>
+                      <SelectItem value="1800">30 minutes</SelectItem>
+                      <SelectItem value="3600">1 hour</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Time allowed before automatic escalation
+                  </p>
+                </div>
+
+                <div className="mb-6 flex items-center justify-between">
+                  <label className="text-sm font-medium text-foreground">
+                    Enable Recording
+                  </label>
+                  <Button
+                    variant={recordingEnabled ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setRecordingEnabled(!recordingEnabled)}
+                  >
+                    {recordingEnabled ? "Enabled" : "Disabled"}
+                  </Button>
+                </div>
+
                 <Button
                   onClick={startCheckIn}
                   className="w-full"
@@ -214,6 +345,20 @@ const SafetyCheckIn = () => {
                   <MapPin className="w-5 h-5 animate-pulse" />
                   <span className="font-medium">Check-in Active</span>
                 </div>
+
+                {escalationStatus !== 'none' && (
+                  <div className={`text-center text-sm font-medium ${
+                    escalationStatus === 'critical' ? 'text-destructive' : 'text-warning'
+                  }`}>
+                    Status: {escalationStatus.toUpperCase()}
+                  </div>
+                )}
+
+                {missedCheckins > 0 && (
+                  <div className="text-center text-sm text-muted-foreground">
+                    Missed check-ins: {missedCheckins}
+                  </div>
+                )}
 
                 <p className="text-sm text-center text-muted-foreground">
                   Location is being shared every {parseInt(interval) / 60} minutes

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { AlertCircle, Phone, Video } from "lucide-react";
+import { AlertCircle, Phone, Video, Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,10 +11,13 @@ const SOSButton = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
+  const [voiceActivationEnabled, setVoiceActivationEnabled] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Request camera and microphone permissions on mount
   useEffect(() => {
@@ -44,6 +47,89 @@ const SOSButton = () => {
       }
     };
   }, []);
+
+  // Voice activation setup
+  useEffect(() => {
+    if (!voiceActivationEnabled) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast.error("Voice activation not supported in this browser");
+      setVoiceActivationEnabled(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.success("Voice activation listening for 'Alpha X'");
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('')
+        .toLowerCase();
+
+      console.log('Voice input:', transcript);
+
+      if (transcript.includes('alpha x') || transcript.includes('alpha ex')) {
+        toast.success("Voice trigger detected!");
+        activateSOS();
+        // Brief pause after activation
+        recognition.stop();
+        setTimeout(() => {
+          if (voiceActivationEnabled && !isActive) {
+            recognition.start();
+          }
+        }, 5000);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'no-speech') {
+        // Restart if it stops due to no speech
+        setTimeout(() => {
+          if (voiceActivationEnabled) {
+            recognition.start();
+          }
+        }, 1000);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // Restart if still enabled
+      if (voiceActivationEnabled && !isActive) {
+        setTimeout(() => {
+          recognition.start();
+        }, 500);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+
+    return () => {
+      recognition.stop();
+    };
+  }, [voiceActivationEnabled, isActive]);
+
+  const toggleVoiceActivation = () => {
+    setVoiceActivationEnabled(!voiceActivationEnabled);
+  };
 
   const activateSOS = () => {
     // Start 3-second countdown
@@ -280,6 +366,24 @@ const SOSButton = () => {
             <p className="text-muted-foreground">
               Press and hold for 3 seconds to activate emergency response
             </p>
+            
+            {/* Voice Activation Toggle */}
+            <div className="mt-4 flex items-center justify-center gap-3">
+              <Button
+                onClick={toggleVoiceActivation}
+                variant={voiceActivationEnabled ? "default" : "outline"}
+                size="sm"
+                className="gap-2"
+              >
+                {voiceActivationEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                Voice Activation
+              </Button>
+              {isListening && (
+                <span className="text-xs text-primary animate-pulse">
+                  Listening for "Alpha X"...
+                </span>
+              )}
+            </div>
           </div>
 
           {/* SOS Button */}

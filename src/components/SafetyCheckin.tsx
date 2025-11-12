@@ -42,10 +42,10 @@ const SafetyCheckIn = () => {
         setIsActive(true);
         setCheckInId(data.id);
         setInterval(data.check_in_interval.toString());
-        setDeactivationLimit(data.deactivation_limit?.toString() || "600");
-        setRecordingEnabled(data.recording_enabled ?? true);
-        setEscalationStatus(data.escalation_status || "none");
-        setMissedCheckins(data.missed_checkins || 0);
+        setDeactivationLimit((data as any).deactivation_limit?.toString() || "600");
+        setRecordingEnabled((data as any).recording_enabled ?? true);
+        setEscalationStatus((data as any).escalation_status || "none");
+        setMissedCheckins((data as any).missed_checkins || 0);
         startLocationUpdates(data.check_in_interval);
         startEscalationCheck(data);
       }
@@ -80,7 +80,7 @@ const SafetyCheckIn = () => {
         const deactivationTime = (now.getTime() - new Date(data.created_at).getTime()) / 1000;
 
         // Check if missed check-in
-        if (timeSinceUpdate > data.check_in_interval * 2 && data.escalation_status === 'none') {
+        if (timeSinceUpdate > data.check_in_interval * 2 && (data as any).escalation_status === 'none') {
           setEscalationStatus('escalated');
           toast.error("Missed check-in detected! Escalating...");
           
@@ -105,13 +105,13 @@ const SafetyCheckIn = () => {
         }
 
         // Check if deactivation limit exceeded
-        if (deactivationTime > data.deactivation_limit && data.status === 'active') {
+        if (deactivationTime > (data as any).deactivation_limit && data.status === 'active') {
           toast.error("Deactivation time exceeded! Alerting emergency contacts!");
           setEscalationStatus('critical');
         }
 
-        setMissedCheckins(data.missed_checkins || 0);
-        setEscalationStatus(data.escalation_status || 'none');
+        setMissedCheckins((data as any).missed_checkins || 0);
+        setEscalationStatus((data as any).escalation_status || 'none');
       }
     }, checkInterval);
 
@@ -130,7 +130,7 @@ const SafetyCheckIn = () => {
 
         if (user) {
           // Log location
-          await supabase.from('location_logs').insert({
+          await (supabase as any).from('location_logs').insert({
             user_id: user.id,
             checkin_id: checkInId,
             latitude,

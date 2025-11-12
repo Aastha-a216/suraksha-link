@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Shield, MapPin } from "lucide-react";
+import { Shield, MapPin, Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useMediaRecording } from "@/hooks/useMediaRecording";
 import {
   Select,
   SelectContent,
@@ -14,6 +15,7 @@ import {
 
 const SafetyCheckIn = () => {
   const { user } = useAuth();
+  const { isRecording, recordingDuration, startRecording, stopRecording } = useMediaRecording();
   const [isActive, setIsActive] = useState(false);
   const [checkInId, setCheckInId] = useState<string | null>(null);
   const [interval, setInterval] = useState("600"); // 10 minutes in seconds
@@ -228,6 +230,17 @@ const SafetyCheckIn = () => {
     startLocationUpdates(intervalSeconds);
     startEscalationCheck(data);
 
+    // Start recording if enabled
+    if (recordingEnabled && user) {
+      await startRecording({
+        userId: user.id,
+        checkinId: data.id,
+        onRecordingStart: () => {
+          toast.info("Recording started for evidence collection");
+        }
+      });
+    }
+
     toast.success("Safety check-in started", {
       description: `Location will be shared every ${intervalSeconds / 60} minutes`,
     });
@@ -235,6 +248,11 @@ const SafetyCheckIn = () => {
 
   const markAsSafe = async () => {
     if (!checkInId || !user) return;
+
+    // Stop recording if active
+    if (isRecording) {
+      stopRecording();
+    }
 
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
@@ -345,6 +363,24 @@ const SafetyCheckIn = () => {
                   <MapPin className="w-5 h-5 animate-pulse" />
                   <span className="font-medium">Check-in Active</span>
                 </div>
+
+                {recordingEnabled && (
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    {isRecording ? (
+                      <>
+                        <Mic className="w-4 h-4 text-destructive animate-pulse" />
+                        <span className="text-muted-foreground">
+                          Recording: {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <MicOff className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Recording enabled</span>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {escalationStatus !== 'none' && (
                   <div className={`text-center text-sm font-medium ${

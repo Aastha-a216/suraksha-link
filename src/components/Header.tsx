@@ -31,11 +31,11 @@ const Header = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/recordings')}
+                onClick={() => navigate('/evidence')}
                 className="gap-2"
               >
                 <Video className="w-4 h-4" />
-                <span className="hidden sm:inline">Recordings</span>
+                <span className="hidden sm:inline">Evidence</span>
               </Button>
               <Button
                 variant="ghost"

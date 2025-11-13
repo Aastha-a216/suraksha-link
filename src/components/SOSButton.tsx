@@ -251,7 +251,7 @@ const SOSButton = () => {
           });
         }
 
-        // Get emergency contacts
+        // Create alert for emergency contacts to view
         if (user) {
           const { data: contacts } = await supabase
             .from('emergency_contacts')
@@ -259,29 +259,9 @@ const SOSButton = () => {
             .eq('user_id', user.id);
 
           if (contacts && contacts.length > 0) {
-            // Send SMS via edge function
-            try {
-              const { data, error } = await supabase.functions.invoke('send-sos-sms', {
-                body: {
-                  latitude,
-                  longitude,
-                  contacts: contacts.map(c => ({ phone: c.phone, name: c.name }))
-                }
-              });
-
-              if (error) {
-                console.error('Error sending SOS SMS:', error);
-                toast.error("Failed to send location alerts");
-              } else {
-                const successCount = data.results.filter((r: any) => r.success).length;
-                toast.success(`Location sent to ${successCount} emergency contact${successCount !== 1 ? 's' : ''}`);
-              }
-            } catch (error) {
-              console.error('Error calling SMS function:', error);
-              toast.error("Failed to send location alerts");
-            }
+            toast.success(`🚨 SOS Alert saved - Location: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
           } else {
-            toast.warning("No emergency contacts found. Add contacts first.");
+            toast.warning("No emergency contacts found. Add contacts in settings.");
           }
         }
       },

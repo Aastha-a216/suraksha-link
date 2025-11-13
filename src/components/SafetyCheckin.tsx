@@ -86,16 +86,23 @@ const SafetyCheckIn = () => {
           setEscalationStatus('escalated');
           toast.error("Missed check-in detected! Escalating...");
           
-          // Log critical alert in database
-          if (navigator.geolocation) {
+          // Send critical alert to emergency contacts
+          const { data: contacts } = await supabase
+            .from('emergency_contacts')
+            .select('*')
+            .eq('user_id', user?.id);
+
+          if (contacts && contacts.length > 0 && navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(async (position) => {
-              await supabase.from('sos_alerts').insert({
-                user_id: user?.id,
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-                status: 'active',
+              await supabase.functions.invoke('send-sos-sms', {
+                body: {
+                  latitude: position.coords.latitude,
+                  longitude: position.coords.longitude,
+                  contacts: contacts.map(c => ({ phone: c.phone, name: c.name })),
+                  isCritical: true
+                }
               });
-              toast.error("🚨 Critical: Missed check-in alert saved to Evidence Vault");
+              toast.error("🚨 Critical: Emergency SMS sent!");
             });
           }
         }
@@ -140,22 +147,41 @@ const SafetyCheckIn = () => {
             .eq('user_id', user.id);
 
           if (contacts && contacts.length > 0) {
-            toast.success(`📍 Location logged at ${new Date().toLocaleTimeString()}`);
-          }
+            try {
+              const { data, error } = await supabase.functions.invoke('send-sos-sms', {
+                body: {
+                  latitude,
+                  longitude,
+                  contacts: contacts.map(c => ({ phone: c.phone, name: c.name }))
+                }
+              });
 
-          // Update last update time and reset escalation
-          if (checkInId) {
-            await supabase
-              .from('safety_checkins')
-              .update({ 
-                last_update_at: new Date().toISOString(),
-                missed_checkins: 0,
-                escalation_status: 'none'
-              })
-              .eq('id', checkInId);
-            
-            setMissedCheckins(0);
-            setEscalationStatus('none');
+              if (error) {
+                console.error('Error sending check-in SMS:', error);
+                toast.warning("Check-in logged but SMS failed");
+              } else {
+                const successCount = data.results.filter((r: any) => r.success).length;
+                toast.success(`📍 Check-in sent to ${successCount} contact${successCount !== 1 ? 's' : ''}`);
+              }
+
+              // Update last update time and reset escalation
+              if (checkInId) {
+                await supabase
+                  .from('safety_checkins')
+                  .update({ 
+                    last_update_at: new Date().toISOString(),
+                    missed_checkins: 0,
+                    escalation_status: 'none'
+                  })
+                  .eq('id', checkInId);
+                
+                setMissedCheckins(0);
+                setEscalationStatus('none');
+              }
+            } catch (error) {
+              console.error('Error sending check-in:', error);
+              toast.error("Check-in failed");
+            }
           }
         }
       },
